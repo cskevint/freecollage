@@ -43,7 +43,7 @@ struct CollageView: View {
     
     private var canvasView: some View {
         GeometryReader { geometry in
-            let availableWidth = geometry.size.width - 32 // Account for padding
+            let availableWidth = geometry.size.width - 4 // Account for 2px padding on each side
             let newCanvasSize = CGSize(width: availableWidth, height: availableWidth)
             
             canvasContent(canvasSize: newCanvasSize)
@@ -55,7 +55,7 @@ struct CollageView: View {
                     }
                 }
                 .onChange(of: geometry.size) { oldValue, newValue in
-                    let updatedWidth = newValue.width - 32
+                    let updatedWidth = newValue.width - 4
                     let updatedCanvasSize = CGSize(width: updatedWidth, height: updatedWidth)
                     canvasSize = updatedCanvasSize
                     // Recreate grid if items exist but need resizing
@@ -72,7 +72,6 @@ struct CollageView: View {
             Rectangle()
                 .fill(backgroundColor)
                 .frame(width: canvasSize.width, height: canvasSize.height)
-                .border(Color.gray.opacity(0.3), width: 1)
                 .onTapGesture {
                     selectedItemId = nil
                     activeInteractionItemId = nil
@@ -111,7 +110,7 @@ struct CollageView: View {
             }
         }
         .clipped()
-        .padding()
+        .padding(2) // Consistent 2px outer margin to match inner cell spacing
     }
     
     private var controlsSection: some View {
@@ -289,7 +288,7 @@ struct CollageView: View {
     private func createDefaultGrid(canvasSize: CGSize) {
         let centerPosition = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
         // Use same sizing logic as GridLayoutView for 1x1 grid
-        let itemSize = CGSize(width: canvasSize.width - 4, height: canvasSize.height - 4)
+        let itemSize = CGSize(width: canvasSize.width - 2, height: canvasSize.height - 2)
         
         let newItem = CollageItem(
             id: UUID(),
@@ -574,13 +573,13 @@ struct CollageItemView: View {
                             }
                         }
                 } else {
-                    // Show empty placeholder
+                    // Show empty placeholder with consistent gray color regardless of background
                     Rectangle()
-                        .fill(Color.gray.opacity(0.3))
+                        .fill(Color.gray.opacity(0.2))
                         .frame(width: item.size.width, height: item.size.height)
                         .overlay(
                             Image(systemName: "photo")
-                                .foregroundColor(.gray)
+                                .foregroundColor(Color.gray.opacity(0.8))
                                 .font(.title2)
                         )
                         .onTapGesture {

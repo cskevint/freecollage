@@ -73,7 +73,7 @@ struct GridLayoutView: View {
                 let item = CollageItem(
                     image: nil,
                     position: CGPoint(x: x, y: y),
-                    size: CGSize(width: itemWidth - 4, height: itemHeight - 4) // Small gap between items
+                    size: CGSize(width: itemWidth - 2, height: itemHeight - 2) // 2px gap between items to match outer margin
                 )
                 newItems.append(item)
             }
