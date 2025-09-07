@@ -19,7 +19,7 @@ A simple and intuitive iPhone application for creating photo collages from your 
 ## User Interface
 
 <p align="center">
-  <img src="screenshot.png" alt="App Screenshot" width="50%" style="border:1px solid #505050ff; border-radius:12px;">
+  <img src="screenshot.png" alt="App Screenshot" width="50%">
 </p>
 
 ### Toolbar
