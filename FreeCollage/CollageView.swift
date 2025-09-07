@@ -18,6 +18,7 @@ struct CollageView: View {
     @State private var refreshTrigger = false
     @StateObject private var exportManager = ExportManager()
     @State private var canvasSize = CGSize(width: 300, height: 300) // Default size, will be updated
+    @State private var activeInteractionItemId: UUID? = nil // Track which image is being interacted with
     
     // Computed property to control sheet presentation
     private var shouldShowShareSheet: Binding<Bool> {
@@ -74,10 +75,11 @@ struct CollageView: View {
                 .border(Color.gray.opacity(0.3), width: 1)
                 .onTapGesture {
                     selectedItemId = nil
+                    activeInteractionItemId = nil
                 }
             
             // Collage Items
-            ForEach(collageItems) { item in
+            ForEach(Array(collageItems.enumerated()), id: \.element.id) { index, item in
                 let xOffset = item.position.x - canvasSize.width / 2
                 let yOffset = item.position.y - canvasSize.height / 2
                 
@@ -85,6 +87,7 @@ struct CollageView: View {
                     item: item,
                     itemImages: itemImages,
                     isSelected: selectedItemId == item.id,
+                    activeInteractionItemId: $activeInteractionItemId,
                     onTap: {
                         // Always show photo picker when tapping any grid cell
                         itemToUpdate = item.id
@@ -102,6 +105,8 @@ struct CollageView: View {
                     canvasSize: canvasSize
                 )
                 .offset(x: xOffset, y: yOffset)
+                .zIndex(Double(index)) // Explicit z-index based on array position
+                .allowsHitTesting(activeInteractionItemId == nil || activeInteractionItemId == item.id)
                 .id("\(item.id)-\(refreshTrigger)")
             }
         }
@@ -369,6 +374,7 @@ struct CollageView: View {
         if let index = collageItems.firstIndex(where: { $0.id == id }) {
             let item = collageItems.remove(at: index)
             collageItems.append(item)
+            refreshTrigger.toggle() // Trigger UI refresh for z-index update
         }
     }
     
@@ -432,13 +438,13 @@ struct CollageItemView: View {
     let item: CollageItem
     let itemImages: [UUID: UIImage]
     let isSelected: Bool
+    @Binding var activeInteractionItemId: UUID?
     let onTap: () -> Void
     let onSelect: () -> Void
     let onPositionChange: (CGPoint) -> Void
     let onSizeChange: (CGSize) -> Void
     let canvasSize: CGSize
     
-    @State private var dragOffset = CGSize.zero
     @State private var isResizing = false
     
     // New state for image zoom and pan within the frame
@@ -458,19 +464,31 @@ struct CollageItemView: View {
             // Main content
             Group {
                 if let image = itemImages[item.id] ?? item.image {
-                    // Show image with zoom and pan support - constrained within cell boundaries
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .scaleEffect(imageScale)
-                        .offset(imagePanOffset)
+                    // Show image with zoom and pan support - strictly cropped to cell dimensions
+                    Rectangle()
+                        .fill(Color.clear)
                         .frame(width: item.size.width, height: item.size.height)
-                        .clipped()
+                        .background(
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .scaleEffect(imageScale)
+                                .offset(imagePanOffset)
+                                .frame(width: item.size.width, height: item.size.height)
+                        )
+                        .clipShape(Rectangle())
+                        .contentShape(Rectangle()) // Explicitly limit gesture area to rectangle bounds
                         .gesture(
                             SimultaneousGesture(
                                 // Pinch to zoom gesture
                                 MagnificationGesture()
                                     .onChanged { value in
+                                        // Only respond if no other item is active or this item is already active
+                                        guard activeInteractionItemId == nil || activeInteractionItemId == item.id else { return }
+                                        
+                                        // Set this item as active immediately when pinch starts
+                                        activeInteractionItemId = item.id
+                                        
                                         imageScale = max(1.0, min(3.0, value))
                                     }
                                     .onEnded { _ in
@@ -482,11 +500,20 @@ struct CollageItemView: View {
                                                 lastImagePanOffset = .zero
                                             }
                                         }
+                                        
+                                        // Reset active interaction when pinch ends
+                                        activeInteractionItemId = nil
                                     },
                                 
                                 // Pan gesture for moving within the frame
                                 DragGesture()
                                     .onChanged { value in
+                                        // Only respond if no other item is active or this item is already active
+                                        guard activeInteractionItemId == nil || activeInteractionItemId == item.id else { return }
+                                        
+                                        // Set this item as active immediately when drag starts
+                                        activeInteractionItemId = item.id
+                                        
                                         // Select item when starting to pan the image
                                         if imagePanOffset == lastImagePanOffset {
                                             onSelect()
@@ -527,9 +554,25 @@ struct CollageItemView: View {
                                     }
                                     .onEnded { _ in
                                         lastImagePanOffset = imagePanOffset
+                                        
+                                        // Reset active interaction when drag ends
+                                        activeInteractionItemId = nil
                                     }
                             )
                         )
+                        .onTapGesture {
+                            // Immediately claim this item for interaction
+                            activeInteractionItemId = item.id
+                            
+                            onTap()
+                            
+                            // Reset after a short delay to allow other interactions
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                if activeInteractionItemId == item.id {
+                                    activeInteractionItemId = nil
+                                }
+                            }
+                        }
                 } else {
                     // Show empty placeholder
                     Rectangle()
@@ -540,6 +583,11 @@ struct CollageItemView: View {
                                 .foregroundColor(.gray)
                                 .font(.title2)
                         )
+                        .onTapGesture {
+                            // Clear active interaction when tapping empty cell
+                            activeInteractionItemId = nil
+                            onTap()
+                        }
                 }
             }
             
@@ -548,20 +596,6 @@ struct CollageItemView: View {
                 Rectangle()
                     .stroke(Color.blue, lineWidth: 2)
                     .frame(width: item.size.width, height: item.size.height)
-                    .gesture(
-                        // Drag gesture on the border to move the entire item
-                        DragGesture()
-                            .onChanged { value in
-                                dragOffset = value.translation
-                            }
-                            .onEnded { value in
-                                let newX = max(item.size.width / 2, min(canvasSize.width - item.size.width / 2, item.position.x + value.translation.width))
-                                let newY = max(item.size.height / 2, min(canvasSize.height - item.size.height / 2, item.position.y + value.translation.height))
-                                
-                                onPositionChange(CGPoint(x: newX, y: newY))
-                                dragOffset = .zero
-                            }
-                    )
                 
                 // Resize handle
                 Circle()
@@ -582,10 +616,6 @@ struct CollageItemView: View {
                             }
                     )
             }
-        }
-        .offset(dragOffset)
-        .onTapGesture {
-            onTap()
         }
         .onChange(of: itemImages[item.id] ?? item.image) { oldValue, newValue in
             // Reset zoom and pan when image changes
