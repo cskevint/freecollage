@@ -78,7 +78,6 @@ struct CollageView: View {
             
             // Collage Items
             ForEach(collageItems) { item in
-                let isEmpty = item.isEmpty && itemImages[item.id] == nil
                 let xOffset = item.position.x - canvasSize.width / 2
                 let yOffset = item.position.y - canvasSize.height / 2
                 
@@ -442,17 +441,95 @@ struct CollageItemView: View {
     @State private var dragOffset = CGSize.zero
     @State private var isResizing = false
     
+    // New state for image zoom and pan within the frame
+    @State private var imageScale: CGFloat = 1.0
+    @State private var imagePanOffset = CGSize.zero
+    @State private var lastImagePanOffset = CGSize.zero
+    
+    // Reset zoom and pan when image changes
+    private func resetImageTransformation() {
+        imageScale = 1.0
+        imagePanOffset = .zero
+        lastImagePanOffset = .zero
+    }
+    
     var body: some View {
         ZStack {
             // Main content
             Group {
                 if let image = itemImages[item.id] ?? item.image {
-                    // Show image (check dictionary first, then struct property)
+                    // Show image with zoom and pan support - constrained within cell boundaries
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .scaleEffect(imageScale)
+                        .offset(imagePanOffset)
                         .frame(width: item.size.width, height: item.size.height)
                         .clipped()
+                        .gesture(
+                            SimultaneousGesture(
+                                // Pinch to zoom gesture
+                                MagnificationGesture()
+                                    .onChanged { value in
+                                        imageScale = max(1.0, min(3.0, value))
+                                    }
+                                    .onEnded { _ in
+                                        // Reset pan if zooming out to 1.0
+                                        withAnimation(.spring()) {
+                                            if imageScale <= 1.0 {
+                                                imageScale = 1.0
+                                                imagePanOffset = .zero
+                                                lastImagePanOffset = .zero
+                                            }
+                                        }
+                                    },
+                                
+                                // Pan gesture for moving within the frame
+                                DragGesture()
+                                    .onChanged { value in
+                                        // Select item when starting to pan the image
+                                        if imagePanOffset == lastImagePanOffset {
+                                            onSelect()
+                                        }
+                                        
+                                        let newOffset = CGSize(
+                                            width: lastImagePanOffset.width + value.translation.width,
+                                            height: lastImagePanOffset.height + value.translation.height
+                                        )
+                                        
+                                        // Calculate the actual image dimensions when scaled and aspect-filled
+                                        let imageAspectRatio = image.size.width / image.size.height
+                                        let cellAspectRatio = item.size.width / item.size.height
+                                        
+                                        var imageDisplayWidth: CGFloat
+                                        var imageDisplayHeight: CGFloat
+                                        
+                                        // Determine how the image fills the cell (aspectRatio fill behavior)
+                                        if imageAspectRatio > cellAspectRatio {
+                                            // Image is wider - height fills cell, width extends beyond
+                                            imageDisplayHeight = item.size.height * imageScale
+                                            imageDisplayWidth = imageDisplayHeight * imageAspectRatio
+                                        } else {
+                                            // Image is taller - width fills cell, height extends beyond
+                                            imageDisplayWidth = item.size.width * imageScale
+                                            imageDisplayHeight = imageDisplayWidth / imageAspectRatio
+                                        }
+                                        
+                                        // Calculate maximum pan distances to keep cell fully covered
+                                        let maxPanX = max(0, (imageDisplayWidth - item.size.width) / 2)
+                                        let maxPanY = max(0, (imageDisplayHeight - item.size.height) / 2)
+                                        
+                                        // Constrain panning to keep cell fully covered by image
+                                        imagePanOffset = CGSize(
+                                            width: max(-maxPanX, min(maxPanX, newOffset.width)),
+                                            height: max(-maxPanY, min(maxPanY, newOffset.height))
+                                        )
+                                    }
+                                    .onEnded { _ in
+                                        lastImagePanOffset = imagePanOffset
+                                    }
+                            )
+                        )
                 } else {
                     // Show empty placeholder
                     Rectangle()
@@ -471,6 +548,20 @@ struct CollageItemView: View {
                 Rectangle()
                     .stroke(Color.blue, lineWidth: 2)
                     .frame(width: item.size.width, height: item.size.height)
+                    .gesture(
+                        // Drag gesture on the border to move the entire item
+                        DragGesture()
+                            .onChanged { value in
+                                dragOffset = value.translation
+                            }
+                            .onEnded { value in
+                                let newX = max(item.size.width / 2, min(canvasSize.width - item.size.width / 2, item.position.x + value.translation.width))
+                                let newY = max(item.size.height / 2, min(canvasSize.height - item.size.height / 2, item.position.y + value.translation.height))
+                                
+                                onPositionChange(CGPoint(x: newX, y: newY))
+                                dragOffset = .zero
+                            }
+                    )
                 
                 // Resize handle
                 Circle()
@@ -496,23 +587,12 @@ struct CollageItemView: View {
         .onTapGesture {
             onTap()
         }
-        .gesture(
-            !item.isEmpty ? DragGesture()
-                .onChanged { value in
-                    // Select the item when drag starts (only on first change)
-                    if dragOffset == .zero {
-                        onSelect()
-                    }
-                    dragOffset = value.translation
-                }
-                .onEnded { value in
-                    let newX = max(item.size.width / 2, min(canvasSize.width - item.size.width / 2, item.position.x + value.translation.width))
-                    let newY = max(item.size.height / 2, min(canvasSize.height - item.size.height / 2, item.position.y + value.translation.height))
-                    
-                    onPositionChange(CGPoint(x: newX, y: newY))
-                    dragOffset = .zero
-                } : nil
-        )
+        .onChange(of: itemImages[item.id] ?? item.image) { oldValue, newValue in
+            // Reset zoom and pan when image changes
+            if oldValue != newValue {
+                resetImageTransformation()
+            }
+        }
     }
 }
 
