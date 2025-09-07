@@ -17,8 +17,7 @@ struct CollageView: View {
     @State private var itemToUpdate: UUID?
     @State private var refreshTrigger = false
     @StateObject private var exportManager = ExportManager()
-    
-    private let canvasSize = CGSize(width: 300, height: 300)
+    @State private var canvasSize = CGSize(width: 300, height: 300) // Default size, will be updated
     
     // Computed property to control sheet presentation
     private var shouldShowShareSheet: Binding<Bool> {
@@ -42,6 +41,32 @@ struct CollageView: View {
     }
     
     private var canvasView: some View {
+        GeometryReader { geometry in
+            let availableWidth = geometry.size.width - 32 // Account for padding
+            let newCanvasSize = CGSize(width: availableWidth, height: availableWidth)
+            
+            canvasContent(canvasSize: newCanvasSize)
+                .onAppear {
+                    canvasSize = newCanvasSize
+                    // Set default 1x1 grid layout when canvas size is known
+                    if collageItems.isEmpty {
+                        createDefaultGrid(canvasSize: newCanvasSize)
+                    }
+                }
+                .onChange(of: geometry.size) { oldValue, newValue in
+                    let updatedWidth = newValue.width - 32
+                    let updatedCanvasSize = CGSize(width: updatedWidth, height: updatedWidth)
+                    canvasSize = updatedCanvasSize
+                    // Recreate grid if items exist but need resizing
+                    if !collageItems.isEmpty && collageItems.count == 1 {
+                        createDefaultGrid(canvasSize: updatedCanvasSize)
+                    }
+                }
+        }
+        .aspectRatio(1, contentMode: .fit) // Keep it square
+    }
+    
+    private func canvasContent(canvasSize: CGSize) -> some View {
         ZStack {
             Rectangle()
                 .fill(backgroundColor)
@@ -251,41 +276,15 @@ struct CollageView: View {
             }
         }
         .onAppear {
-            // Set default 1x1 grid layout when view appears
-            if collageItems.isEmpty {
-                let centerPosition = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
-                // Use same sizing logic as GridLayoutView for 1x1 grid
-                let itemSize = CGSize(width: canvasSize.width - 4, height: canvasSize.height - 4)
-                
-                let newItem = CollageItem(
-                    id: UUID(),
-                    image: nil,
-                    position: centerPosition,
-                    size: itemSize,
-                    rotation: 0,
-                    isSelected: false
-                )
-                
-                collageItems = [newItem]
-            }
+            // Initial setup will happen after canvas size is calculated
         }
     }
     
     // MARK: - Helper Methods
     
-    private func resetToDefaultState() {
-        // Clear all state
-        collageItems = []
-        itemImages = [:]
-        selectedItemId = nil
-        backgroundColor = .white
-        imageToShare = nil
-        selectedImage = nil
-        itemToUpdate = nil
-        refreshTrigger = false
-        
-        // Create fresh 1x1 grid
+    private func createDefaultGrid(canvasSize: CGSize) {
         let centerPosition = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+        // Use same sizing logic as GridLayoutView for 1x1 grid
         let itemSize = CGSize(width: canvasSize.width - 4, height: canvasSize.height - 4)
         
         let newItem = CollageItem(
@@ -298,6 +297,21 @@ struct CollageView: View {
         )
         
         collageItems = [newItem]
+    }
+    
+    private func resetToDefaultState() {
+        // Clear all state
+        collageItems = []
+        itemImages = [:]
+        selectedItemId = nil
+        backgroundColor = .white
+        imageToShare = nil
+        selectedImage = nil
+        itemToUpdate = nil
+        refreshTrigger = false
+        
+        // Create fresh 1x1 grid with current canvas size
+        createDefaultGrid(canvasSize: canvasSize)
     }
     
     private func getItemsWithImages() -> [CollageItem] {
