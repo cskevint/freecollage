@@ -1,29 +1,24 @@
 # FreeCollage
-
 A simple and intuitive iPhone application for creating photo collages from your camera roll. Built with SwiftUI for iOS 17.0+.
 
 ## Features
 
-- **Photo Selection**: Tap any grid cell to add or replace photos using the native photo picker
-- **Grid Layouts**: Choose from various predefined grid layouts (1x1, 2x1, 1x2, 2x2, 3x2, 2x3, 3x3, 4x4)
-- **Interactive Editing**: 
   - Tap photos to add/replace them
   - Drag photos to reposition them within the canvas
   - Resize photos by dragging the corner handle when selected
   - Layer management (bring forward/send back)
   - Remove photos from grid cells
-- **Customization**:
   - Choose from 6 background colors (white, black, gray, blue, green, red)
   - Default 1x1 grid layout on app launch
-- **Export & Sharing**:
   - Share via iOS share sheet (includes save to Photos, Messages, Mail, Social Media, etc.)
   - One-tap sharing with standard iOS share icon
-- **User Experience**:
   - Reset button to clear everything and start fresh
   - Visual selection indicators with blue borders
   - Responsive design with proper bounds checking
-- **Privacy-Focused**: No data storage, no ads, no tracking
 
+## Preview
+
+![App Screenshot](screenshot.png)
 ## User Interface
 
 ### Toolbar
